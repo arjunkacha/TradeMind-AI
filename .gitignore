@@ -1,0 +1,73 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python generated files
+*.joblib
+*.pkl
+
+# Temporary files
+*.tmp
+*.temp
+
+
+# Local trading data
+/data/
+/backend/data/
+*.db
+*.sqlite
+*.sqlite3
+
+# CSV exports and datasets
+*.csv
+
+# Backups
+*.backup
+*.bak
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python cache and environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node dependencies and build output
+node_modules/
+dist/

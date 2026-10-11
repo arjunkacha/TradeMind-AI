@@ -1,0 +1,30 @@
+{
+    "feature_count": 25,
+    "features": [
+        "symbol",
+        "direction",
+        "symbol.1",
+        "direction.1",
+        "entry_hour",
+        "entry_minute",
+        "day_of_week_num",
+        "trades_today",
+        "previous_trade_pnl",
+        "previous_trade_is_loss",
+        "previous_trade_is_win",
+        "time_since_previous_trade",
+        "win_streak",
+        "loss_streak",
+        "previous_loss_streak",
+        "previous_position_size",
+        "position_size_change_pct",
+        "average_position_size",
+        "position_size_ratio",
+        "previous_session_pnl",
+        "behavior_overtrading",
+        "behavior_rapid_reentry",
+        "behavior_oversizing",
+        "behavior_loss_streak",
+        "behavior_revenge"
+    ]
+}
