@@ -1,7 +1,7 @@
 import TradeAnalysis from "./components/TradeAnalysis";
 import TradingTerminal from "./components/TradingTerminal";
 import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import api from "./lib/api";
 
 import {
   Activity,
@@ -12,12 +12,16 @@ import {
   CheckCircle2,
   BrainCircuit,
   ChevronRight,
+  ChevronDown,
   CircleDollarSign,
   Gauge,
   LayoutDashboard,
+  LogOut,
   Menu,
+  Moon,
   RefreshCw,
   ShieldAlert,
+  Sun,
   Target,
   TrendingUp,
   UserRound,
@@ -40,13 +44,6 @@ import {
 
 import "./index.css";
 
-const API =
-  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
-
-const api = axios.create({
-  baseURL: API,
-  timeout: 10000,
-});
 
 const decisionColors = {
   ALLOW: "#22c55e",
@@ -109,6 +106,43 @@ function normalizeList(response) {
 function App() {
   const [dashboard, setDashboard] = useState(null);
 
+  // Authenticated profile and persistent color theme.
+  const [profile, setProfile] = useState(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem("trademind_theme") || "dark"
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    api.get("/api/auth/me")
+      .then((response) => {
+        if (active) setProfile(response.data?.user || response.data || null);
+      })
+      .catch((error) => {
+        if (error?.response?.status === 401) {
+          localStorage.removeItem("trademind_access_token");
+          window.location.replace("/login");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("trademind_theme", theme);
+  }, [theme]);
+
+  const handleLogout = () => {
+    localStorage.removeItem("trademind_access_token");
+    setProfileOpen(false);
+    window.location.replace("/login");
+  };
+
   // --------------------------------------------------
   // DATA SOURCE
   // --------------------------------------------------
@@ -150,34 +184,34 @@ function App() {
         api.get("/api/simulator/journal?limit=500"),
         source === "tradingview"
           ? (async () => {
-              try {
-                return await api.get("/api/tradingview/trades?limit=200");
-              } catch {
-                return await api.get("/api/tradingview/ml-predictions");
-              }
-            })()
+            try {
+              return await api.get("/api/tradingview/trades?limit=200");
+            } catch {
+              return await api.get("/api/tradingview/ml-predictions");
+            }
+          })()
           : Promise.resolve({ data: { trades: [] } }),
       ]);
 
       const simulatorEntries =
         simResult.status === "fulfilled"
           ? (simResult.value?.data?.journal || []).map((entry) => ({
-              ...entry,
-              source: "simulator_auto",
-              direction: entry.direction || entry.side,
-              net_pnl: entry.net_pnl ?? entry.realized_pnl,
-              exit_time: entry.exit_time || entry.closed_at,
-              entry_time: entry.entry_time || entry.opened_at,
-              behaviors: entry.behaviors || "",
-            }))
+            ...entry,
+            source: "simulator_auto",
+            direction: entry.direction || entry.side,
+            net_pnl: entry.net_pnl ?? entry.realized_pnl,
+            exit_time: entry.exit_time || entry.closed_at,
+            entry_time: entry.entry_time || entry.opened_at,
+            behaviors: entry.behaviors || "",
+          }))
           : [];
 
       const importedEntries =
         importedResult.status === "fulfilled"
           ? normalizeList(importedResult.value).map((entry) => ({
-              ...entry,
-              source: entry.source || "tradingview_import",
-            }))
+            ...entry,
+            source: entry.source || "tradingview_import",
+          }))
           : [];
 
       const combined = [...simulatorEntries, ...importedEntries];
@@ -290,8 +324,8 @@ function App() {
             const name = trade.close_reason === "STOP_LOSS"
               ? "Stop-Loss Exit"
               : trade.close_reason === "TAKE_PROFIT"
-              ? "Take-Profit Exit"
-              : null;
+                ? "Take-Profit Exit"
+                : null;
             if (name) behaviorCounts[name] = (behaviorCounts[name] || 0) + 1;
           }
         });
@@ -524,9 +558,8 @@ function App() {
           SIDEBAR
       ================================================== */}
       <aside
-        className={`sidebar ${
-          sidebarOpen ? "open" : ""
-        }`}
+        className={`sidebar ${sidebarOpen ? "open" : ""
+          }`}
       >
         {/* BRAND */}
         <div className="brand">
@@ -561,11 +594,10 @@ function App() {
 
           {/* DASHBOARD */}
           <button
-            className={`nav-item ${
-              activePage === "dashboard"
+            className={`nav-item ${activePage === "dashboard"
                 ? "active"
                 : ""
-            }`}
+              }`}
             onClick={() => {
               setActivePage("dashboard");
               setSidebarOpen(false);
@@ -577,11 +609,10 @@ function App() {
 
           {/* TRADE ANALYSIS */}
           <button
-            className={`nav-item ${
-              activePage === "trade-analysis"
+            className={`nav-item ${activePage === "trade-analysis"
                 ? "active"
                 : ""
-            }`}
+              }`}
             onClick={() => {
               setActivePage("trade-analysis");
               setSidebarOpen(false);
@@ -593,9 +624,8 @@ function App() {
 
           {/* TRADE JOURNAL */}
           <button
-            className={`nav-item ${
-              activePage === "journal" ? "active" : ""
-            }`}
+            className={`nav-item ${activePage === "journal" ? "active" : ""
+              }`}
             onClick={() => {
               setActivePage("journal");
               setSidebarOpen(false);
@@ -607,9 +637,8 @@ function App() {
 
           {/* TRADER PROFILES */}
           <button
-            className={`nav-item ${
-              activePage === "trader-profiles" ? "active" : ""
-            }`}
+            className={`nav-item ${activePage === "trader-profiles" ? "active" : ""
+              }`}
             onClick={() => {
               setActivePage("trader-profiles");
               setSidebarOpen(false);
@@ -637,9 +666,8 @@ function App() {
 
           {/* RISK INTELLIGENCE */}
           <button
-            className={`nav-item ${
-              activePage === "risk-intelligence" ? "active" : ""
-            }`}
+            className={`nav-item ${activePage === "risk-intelligence" ? "active" : ""
+              }`}
             onClick={() => {
               setActivePage("risk-intelligence");
               setSidebarOpen(false);
@@ -651,9 +679,8 @@ function App() {
 
           {/* BEHAVIORAL AI */}
           <button
-            className={`nav-item ${
-              activePage === "behavioral-ai" ? "active" : ""
-            }`}
+            className={`nav-item ${activePage === "behavioral-ai" ? "active" : ""
+              }`}
             onClick={() => {
               setActivePage("behavioral-ai");
               setSidebarOpen(false);
@@ -665,9 +692,8 @@ function App() {
 
           {/* ML PREDICTIONS */}
           <button
-            className={`nav-item ${
-              activePage === "ml-predictions" ? "active" : ""
-            }`}
+            className={`nav-item ${activePage === "ml-predictions" ? "active" : ""
+              }`}
             onClick={() => {
               setActivePage("ml-predictions");
               setSidebarOpen(false);
@@ -724,32 +750,32 @@ function App() {
               {activePage === "trading-terminal"
                 ? "Trading Terminal"
                 : activePage === "trade-analysis"
-                ? "Trade Analysis"
-                : activePage === "trader-profiles"
-                ? "Trader Profiles"
-                : activePage === "risk-intelligence"
-                ? "Risk Intelligence"
-                : activePage === "behavioral-ai"
-                ? "Behavioral AI"
-                : activePage === "ml-predictions"
-                ? "ML Predictions"
-                : "Trading Intelligence"}
+                  ? "Trade Analysis"
+                  : activePage === "trader-profiles"
+                    ? "Trader Profiles"
+                    : activePage === "risk-intelligence"
+                      ? "Risk Intelligence"
+                      : activePage === "behavioral-ai"
+                        ? "Behavioral AI"
+                        : activePage === "ml-predictions"
+                          ? "ML Predictions"
+                          : "Trading Intelligence"}
             </div>
 
             <div className="page-subtitle">
               {activePage === "trading-terminal"
                 ? "XAUUSD and BTCUSD demo trading workspace"
                 : activePage === "trade-analysis"
-                ? "Detailed trade-level behavioral analysis"
-                : activePage === "trader-profiles"
-                ? "Account-level trader behavioral intelligence"
-                : activePage === "risk-intelligence"
-                ? "Portfolio and trade-level behavioral risk analysis"
-                : activePage === "behavioral-ai"
-                ? "Behavioral patterns detected across trading activity"
-                : activePage === "ml-predictions"
-                ? "Machine-learning based trading outcome signals"
-                : "AI-powered behavioral and risk analysis"}
+                  ? "Detailed trade-level behavioral analysis"
+                  : activePage === "trader-profiles"
+                    ? "Account-level trader behavioral intelligence"
+                    : activePage === "risk-intelligence"
+                      ? "Portfolio and trade-level behavioral risk analysis"
+                      : activePage === "behavioral-ai"
+                        ? "Behavioral patterns detected across trading activity"
+                        : activePage === "ml-predictions"
+                          ? "Machine-learning based trading outcome signals"
+                          : "AI-powered behavioral and risk analysis"}
             </div>
           </div>
 
@@ -815,6 +841,66 @@ function App() {
                 }
               />
             </button>
+
+            {/* COLOR THEME */}
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={() =>
+                setTheme((current) => current === "dark" ? "light" : "dark")
+              }
+              title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+              aria-label="Toggle color theme"
+            >
+              {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+
+            {/* ACCOUNT PROFILE */}
+            <div className="profile-menu">
+              <button
+                type="button"
+                className="profile-trigger"
+                onClick={() => setProfileOpen((open) => !open)}
+                aria-expanded={profileOpen}
+                aria-haspopup="menu"
+              >
+                <span className="profile-avatar">
+                  <UserRound size={17} />
+                </span>
+                <span className="profile-trigger-text">
+                  <strong>My Profile</strong>
+                  <small>{profile?.email || "Account"}</small>
+                </span>
+                <ChevronDown size={15} />
+              </button>
+
+              {profileOpen && (
+                <>
+                  <button
+                    type="button"
+                    className="profile-dismiss"
+                    aria-label="Close profile menu"
+                    onClick={() => setProfileOpen(false)}
+                  />
+                  <div className="profile-dropdown" role="menu">
+                    <div className="profile-details">
+                      <strong>Signed in as</strong>
+                      <span>{profile?.email || "Loading profile..."}</span>
+                    </div>
+                    <div className="profile-divider" />
+                    <button
+                      type="button"
+                      className="profile-logout"
+                      role="menuitem"
+                      onClick={handleLogout}
+                    >
+                      <LogOut size={16} />
+                      Log out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
 
           </div>
         </header>
@@ -1007,7 +1093,7 @@ function App() {
                               key={entry.name}
                               fill={
                                 decisionColors[
-                                  entry.name
+                                entry.name
                                 ] || "#64748b"
                               }
                             />
@@ -1053,7 +1139,7 @@ function App() {
                         key={item.name}
                         color={
                           decisionColors[
-                            item.name
+                          item.name
                           ] || "#64748b"
                         }
                         label={item.name}
@@ -1097,7 +1183,7 @@ function App() {
                               key={entry.name}
                               fill={
                                 riskColors[
-                                  entry.name
+                                entry.name
                                 ] || "#64748b"
                               }
                             />
@@ -1145,7 +1231,7 @@ function App() {
                         key={item.name}
                         color={
                           riskColors[
-                            item.name
+                          item.name
                           ] || "#64748b"
                         }
                         label={item.name}
@@ -1432,7 +1518,7 @@ function App() {
 
                                   {String(
                                     trade.behaviors ||
-                                      ""
+                                    ""
                                   )
                                     .split(", ")
                                     .filter(Boolean)
@@ -1709,7 +1795,7 @@ function TradeJournalPage({
           accent="purple"
         />
       </section>
-        <SimulatorJournalInsights />
+      <SimulatorJournalInsights />
 
 
       <Panel
@@ -1804,8 +1890,8 @@ function TradeJournalPage({
                     <td>
                       {formatPercent(
                         trade.ml_win_probability ??
-                          trade.win_probability ??
-                          trade.predicted_probability
+                        trade.win_probability ??
+                        trade.predicted_probability
                       )}
                     </td>
                     <td>
@@ -1875,11 +1961,11 @@ function SimulatorJournalInsights() {
     <section style={{ border: "1px solid #263247", borderRadius: "14px", background: "#0b1220", padding: "16px", marginBottom: "16px" }}>
       <div className="eyebrow">PERSONALIZED SIMULATOR INSIGHTS</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: "10px", marginTop: "12px" }}>
-        {[["Closed trades", summary.trades ?? 0], ["Win rate", `${summary.win_rate ?? 0}%`], ["Net P&L", `${Number(summary.net_pnl ?? 0) >= 0 ? "+" : ""}${Number(summary.net_pnl ?? 0).toFixed(2)} USD`], ["Average R", summary.average_r == null ? "—" : `${Number(summary.average_r).toFixed(2)}R`]].map(([label,value]) => (
+        {[["Closed trades", summary.trades ?? 0], ["Win rate", `${summary.win_rate ?? 0}%`], ["Net P&L", `${Number(summary.net_pnl ?? 0) >= 0 ? "+" : ""}${Number(summary.net_pnl ?? 0).toFixed(2)} USD`], ["Average R", summary.average_r == null ? "—" : `${Number(summary.average_r).toFixed(2)}R`]].map(([label, value]) => (
           <div key={label} style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: "9px", padding: "11px" }}><div style={{ color: "#64748b", fontSize: "10px", textTransform: "uppercase" }}>{label}</div><strong style={{ display: "block", color: "#e2e8f0", marginTop: "5px" }}>{value}</strong></div>
         ))}
       </div>
-      {error ? <p style={{ color: "#fca5a5", fontSize: "12px" }}>{error}</p> : <ul style={{ color: "#cbd5e1", fontSize: "12px", lineHeight: 1.7, paddingLeft: "18px", marginBottom: 0 }}>{(data?.insights || ["Close demo trades and record entry context to build insights."]).map((x,i) => <li key={i}>{x}</li>)}</ul>}
+      {error ? <p style={{ color: "#fca5a5", fontSize: "12px" }}>{error}</p> : <ul style={{ color: "#cbd5e1", fontSize: "12px", lineHeight: 1.7, paddingLeft: "18px", marginBottom: 0 }}>{(data?.insights || ["Close demo trades and record entry context to build insights."]).map((x, i) => <li key={i}>{x}</li>)}</ul>}
       <div style={{ color: "#818cf8", fontSize: "10px", marginTop: "10px" }}>Descriptive rules over your recorded trades — not a predictive ML signal.</div>
     </section>
   );
@@ -1948,9 +2034,9 @@ function TradeJournalDetail({ trade, onClose }) {
     const n = Number(value);
     return Number.isFinite(n)
       ? n.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
       : valueOrDash(value);
   };
 
@@ -1983,8 +2069,8 @@ function TradeJournalDetail({ trade, onClose }) {
     ["Discipline", detail.discipline_score != null ? formatNumber(detail.discipline_score) : "—"],
     ["ML Win Probability", formatPercent(
       detail.ml_win_probability ??
-        detail.win_probability ??
-        detail.predicted_probability
+      detail.win_probability ??
+      detail.predicted_probability
     )],
     ["ML Signal", detail.ml_signal],
     ["Decision", detail.decision],
@@ -2369,10 +2455,10 @@ function RiskIntelligencePage({ dashboard, highRiskTrades, riskData }) {
   const low = Number(dashboard?.risk_distribution?.LOW) || 0;
   return (
     <div className="dashboard-content">
-      <section className="hero"><div><div className="eyebrow"><ShieldAlert size={14}/> RISK INTELLIGENCE</div><h1>Risk Intelligence</h1><p>Understand portfolio risk exposure, behavioral risk and high-risk trades.</p></div><div className="hero-status"><div className="hero-status-icon"><ShieldAlert size={25}/></div><div><strong>Risk Engine Active</strong><span>{formatNumber(total)} trades classified</span></div></div></section>
-      <section className="kpi-grid"><KpiCard icon={<Gauge/>} label="Average Risk" value={formatNumber(average)} description="Portfolio risk score / 100" accent="orange"/><KpiCard icon={<AlertTriangle/>} label="Critical Trades" value={formatNumber(critical)} description="Immediate attention required" accent="red"/><KpiCard icon={<ShieldAlert/>} label="High Risk" value={formatNumber(high)} description="High behavioral risk" accent="orange"/><KpiCard icon={<Activity/>} label="Analyzed Trades" value={formatNumber(total)} description="Risk-classified trades" accent="purple"/></section>
-      <section className="two-column"><Panel title="Risk Distribution" subtitle="Current risk composition" icon={<ShieldAlert size={18}/>}><div className="chart-container"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={riskData} dataKey="value" nameKey="name" innerRadius={72} outerRadius={105} paddingAngle={3} stroke="none">{riskData.map(e=><Cell key={e.name} fill={riskColors[e.name]||"#64748b"}/>)}</Pie><Tooltip/></PieChart></ResponsiveContainer><div className="chart-center"><strong>{formatNumber(critical)}</strong><span>CRITICAL</span></div></div><div className="legend"><LegendItem color={riskColors.LOW} label="LOW" value={low}/><LegendItem color={riskColors.MEDIUM} label="MEDIUM" value={medium}/><LegendItem color={riskColors.HIGH} label="HIGH" value={high}/><LegendItem color={riskColors.CRITICAL} label="CRITICAL" value={critical}/></div></Panel><Panel title="Risk Interpretation" subtitle="TradeMind risk engine" icon={<BrainCircuit size={18}/>}><div className="model-name"><div className="model-icon"><ShieldAlert size={21}/></div><div><strong>Behavioral Risk Analysis</strong><span>Risk scoring + behavioral signals</span></div></div><div style={{marginTop:"18px",color:"#94a3b8",lineHeight:"1.7"}}>TradeMind classifies trading activity into LOW, MEDIUM, HIGH and CRITICAL behavioral-risk categories.<br/><br/>Higher-risk trades receive additional review so recurring patterns can be investigated.</div></Panel></section>
-      <Panel title="Highest Risk Trades" subtitle="Trades requiring the most attention" icon={<AlertTriangle size={18}/>} action={<div className="panel-meta">{highRiskTrades.length} flagged</div>}><div className="risk-table-wrapper"><table className="risk-table"><thead><tr><th>TRADE</th><th>SYMBOL</th><th>DIRECTION</th><th>RISK SCORE</th><th>RISK LEVEL</th><th>DECISION</th></tr></thead><tbody>{highRiskTrades.slice(0,10).map((trade,i)=><tr key={trade.trade_id||i}><td><strong className="trade-id">{trade.trade_id||"—"}</strong></td><td>{trade.symbol||"—"}</td><td>{trade.direction||"—"}</td><td><div className="risk-score">{formatNumber(trade.risk_score)}<span>/100</span></div></td><td><RiskBadge level={trade.risk_level||"UNKNOWN"}/></td><td><DecisionBadge decision={trade.decision||"—"}/></td></tr>)}</tbody></table></div></Panel>
+      <section className="hero"><div><div className="eyebrow"><ShieldAlert size={14} /> RISK INTELLIGENCE</div><h1>Risk Intelligence</h1><p>Understand portfolio risk exposure, behavioral risk and high-risk trades.</p></div><div className="hero-status"><div className="hero-status-icon"><ShieldAlert size={25} /></div><div><strong>Risk Engine Active</strong><span>{formatNumber(total)} trades classified</span></div></div></section>
+      <section className="kpi-grid"><KpiCard icon={<Gauge />} label="Average Risk" value={formatNumber(average)} description="Portfolio risk score / 100" accent="orange" /><KpiCard icon={<AlertTriangle />} label="Critical Trades" value={formatNumber(critical)} description="Immediate attention required" accent="red" /><KpiCard icon={<ShieldAlert />} label="High Risk" value={formatNumber(high)} description="High behavioral risk" accent="orange" /><KpiCard icon={<Activity />} label="Analyzed Trades" value={formatNumber(total)} description="Risk-classified trades" accent="purple" /></section>
+      <section className="two-column"><Panel title="Risk Distribution" subtitle="Current risk composition" icon={<ShieldAlert size={18} />}><div className="chart-container"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={riskData} dataKey="value" nameKey="name" innerRadius={72} outerRadius={105} paddingAngle={3} stroke="none">{riskData.map(e => <Cell key={e.name} fill={riskColors[e.name] || "#64748b"} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer><div className="chart-center"><strong>{formatNumber(critical)}</strong><span>CRITICAL</span></div></div><div className="legend"><LegendItem color={riskColors.LOW} label="LOW" value={low} /><LegendItem color={riskColors.MEDIUM} label="MEDIUM" value={medium} /><LegendItem color={riskColors.HIGH} label="HIGH" value={high} /><LegendItem color={riskColors.CRITICAL} label="CRITICAL" value={critical} /></div></Panel><Panel title="Risk Interpretation" subtitle="TradeMind risk engine" icon={<BrainCircuit size={18} />}><div className="model-name"><div className="model-icon"><ShieldAlert size={21} /></div><div><strong>Behavioral Risk Analysis</strong><span>Risk scoring + behavioral signals</span></div></div><div style={{ marginTop: "18px", color: "#94a3b8", lineHeight: "1.7" }}>TradeMind classifies trading activity into LOW, MEDIUM, HIGH and CRITICAL behavioral-risk categories.<br /><br />Higher-risk trades receive additional review so recurring patterns can be investigated.</div></Panel></section>
+      <Panel title="Highest Risk Trades" subtitle="Trades requiring the most attention" icon={<AlertTriangle size={18} />} action={<div className="panel-meta">{highRiskTrades.length} flagged</div>}><div className="risk-table-wrapper"><table className="risk-table"><thead><tr><th>TRADE</th><th>SYMBOL</th><th>DIRECTION</th><th>RISK SCORE</th><th>RISK LEVEL</th><th>DECISION</th></tr></thead><tbody>{highRiskTrades.slice(0, 10).map((trade, i) => <tr key={trade.trade_id || i}><td><strong className="trade-id">{trade.trade_id || "—"}</strong></td><td>{trade.symbol || "—"}</td><td>{trade.direction || "—"}</td><td><div className="risk-score">{formatNumber(trade.risk_score)}<span>/100</span></div></td><td><RiskBadge level={trade.risk_level || "UNKNOWN"} /></td><td><DecisionBadge decision={trade.decision || "—"} /></td></tr>)}</tbody></table></div></Panel>
     </div>
   );
 }
@@ -2477,34 +2563,34 @@ function TraderProfilesPage({ dashboard, highRiskTrades, dataSource, traderProfi
                     <td>
                       {formatNumber(
                         profile.total_trades ??
-                          profile.trade_count ??
-                          profile.trades
+                        profile.trade_count ??
+                        profile.trades
                       )}
                     </td>
                     <td>
                       {formatNumber(
                         profile.average_risk_score ??
-                          profile.avg_risk_score ??
-                          profile.risk_score
+                        profile.avg_risk_score ??
+                        profile.risk_score
                       )}
                     </td>
                     <td>
                       {formatNumber(
                         profile.discipline_score ??
-                          profile.average_discipline_score
+                        profile.average_discipline_score
                       )}
                     </td>
                     <td>
                       {formatNumber(
                         profile.behavior_score ??
-                          profile.average_behavior_score
+                        profile.average_behavior_score
                       )}
                     </td>
                     <td>
                       {formatPercent(
                         profile.win_rate ??
-                          profile.win_probability ??
-                          profile.average_ml_win_probability
+                        profile.win_probability ??
+                        profile.average_ml_win_probability
                       )}
                     </td>
                   </tr>
@@ -2568,8 +2654,8 @@ function TraderProfilesPage({ dashboard, highRiskTrades, dataSource, traderProfi
 }
 
 function BehavioralAIPage({ behaviors, highRiskTrades, dataSource }) {
-  const total=behaviors.reduce((s,x)=>s+(Number(x.value)||0),0); const list=[...behaviors].sort((a,b)=>b.value-a.value);
-  return <div className="dashboard-content"><section className="hero"><div><div className="eyebrow"><BrainCircuit size={14}/> BEHAVIORAL INTELLIGENCE</div><h1>Behavioral AI</h1><p>Detect recurring trading patterns and behavioral risk signals.</p></div></section><section className="kpi-grid"><KpiCard icon={<BrainCircuit/>} label="Behavioral Flags" value={formatNumber(total)} description="Detected behavior events" accent="purple"/><KpiCard icon={<Activity/>} label="Behavior Types" value={formatNumber(list.length)} description="Detected categories" accent="blue"/><KpiCard icon={<AlertTriangle/>} label="High-Risk Trades" value={formatNumber(highRiskTrades.length)} description="High / critical risk view" accent="red"/><KpiCard icon={<Gauge/>} label="Source" value={dataSource === "tradingview" ? "CSV" : "DEMO"} description="Selected data source" accent="green"/></section><section className="two-column"><Panel title="Behavior Distribution" subtitle="Detected behavioral patterns" icon={<BrainCircuit size={18}/>}><div className="behavior-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={list} layout="vertical"><CartesianGrid stroke="#1e293b" horizontal={false}/><XAxis type="number" stroke="#64748b" fontSize={11}/><YAxis type="category" dataKey="behavior" stroke="#94a3b8" fontSize={11} width={110}/><Tooltip/><Bar dataKey="value" fill="#8b5cf6" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div></Panel><Panel title="Behavior Interpretation" subtitle="Explainable rule engine" icon={<Activity size={18}/>}><div className="model-name"><div className="model-icon"><BrainCircuit size={21}/></div><div><strong>Behavior Detection Engine</strong><span>Evidence-based behavioral signals</span></div></div><div style={{marginTop:"18px",color:"#94a3b8",lineHeight:"1.7"}}>TradeMind uses measurable activity such as trading frequency, re-entry timing, position sizing and loss patterns to identify behavioral signals.</div></Panel></section><Panel title="Detected Patterns" subtitle="Current behavioral categories" icon={<Activity size={18}/>}><div className="metric-grid">{list.map(x=><Metric key={x.behavior} label={x.behavior} value={formatNumber(x.value)}/>)}</div></Panel></div>;
+  const total = behaviors.reduce((s, x) => s + (Number(x.value) || 0), 0); const list = [...behaviors].sort((a, b) => b.value - a.value);
+  return <div className="dashboard-content"><section className="hero"><div><div className="eyebrow"><BrainCircuit size={14} /> BEHAVIORAL INTELLIGENCE</div><h1>Behavioral AI</h1><p>Detect recurring trading patterns and behavioral risk signals.</p></div></section><section className="kpi-grid"><KpiCard icon={<BrainCircuit />} label="Behavioral Flags" value={formatNumber(total)} description="Detected behavior events" accent="purple" /><KpiCard icon={<Activity />} label="Behavior Types" value={formatNumber(list.length)} description="Detected categories" accent="blue" /><KpiCard icon={<AlertTriangle />} label="High-Risk Trades" value={formatNumber(highRiskTrades.length)} description="High / critical risk view" accent="red" /><KpiCard icon={<Gauge />} label="Source" value={dataSource === "tradingview" ? "CSV" : "DEMO"} description="Selected data source" accent="green" /></section><section className="two-column"><Panel title="Behavior Distribution" subtitle="Detected behavioral patterns" icon={<BrainCircuit size={18} />}><div className="behavior-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={list} layout="vertical"><CartesianGrid stroke="#1e293b" horizontal={false} /><XAxis type="number" stroke="#64748b" fontSize={11} /><YAxis type="category" dataKey="behavior" stroke="#94a3b8" fontSize={11} width={110} /><Tooltip /><Bar dataKey="value" fill="#8b5cf6" radius={[0, 5, 5, 0]} /></BarChart></ResponsiveContainer></div></Panel><Panel title="Behavior Interpretation" subtitle="Explainable rule engine" icon={<Activity size={18} />}><div className="model-name"><div className="model-icon"><BrainCircuit size={21} /></div><div><strong>Behavior Detection Engine</strong><span>Evidence-based behavioral signals</span></div></div><div style={{ marginTop: "18px", color: "#94a3b8", lineHeight: "1.7" }}>TradeMind uses measurable activity such as trading frequency, re-entry timing, position sizing and loss patterns to identify behavioral signals.</div></Panel></section><Panel title="Detected Patterns" subtitle="Current behavioral categories" icon={<Activity size={18} />}><div className="metric-grid">{list.map(x => <Metric key={x.behavior} label={x.behavior} value={formatNumber(x.value)} />)}</div></Panel></div>;
 }
 
 function MLPredictionsPage({
@@ -2606,21 +2692,21 @@ function MLPredictionsPage({
         </div>
       </section>
 
-{dataSource !== "simulator" && (
-      <Panel
-        title={mlMetrics?.model || "Trusted ML Model"}
-        subtitle={mlMetrics?.validation || "Temporal validation"}
-        icon={<Target size={18} />}
-      >
-        <div className="metric-grid">
-          <Metric label="Accuracy" value={formatPercent(m.accuracy)} />
-          <Metric label="Precision" value={formatPercent(m.precision)} />
-          <Metric label="Recall" value={formatPercent(m.recall)} />
-          <Metric label="F1 Score" value={formatPercent(m.f1)} />
-          <Metric label="ROC-AUC" value={formatNumber(m.roc_auc)} />
-          <Metric label="PR-AUC" value={formatNumber(m.pr_auc)} />
-        </div>
-      </Panel>
+      {dataSource !== "simulator" && (
+        <Panel
+          title={mlMetrics?.model || "Trusted ML Model"}
+          subtitle={mlMetrics?.validation || "Temporal validation"}
+          icon={<Target size={18} />}
+        >
+          <div className="metric-grid">
+            <Metric label="Accuracy" value={formatPercent(m.accuracy)} />
+            <Metric label="Precision" value={formatPercent(m.precision)} />
+            <Metric label="Recall" value={formatPercent(m.recall)} />
+            <Metric label="F1 Score" value={formatPercent(m.f1)} />
+            <Metric label="ROC-AUC" value={formatNumber(m.roc_auc)} />
+            <Metric label="PR-AUC" value={formatNumber(m.pr_auc)} />
+          </div>
+        </Panel>
 
       )}
       <Panel
@@ -2658,8 +2744,8 @@ function MLPredictionsPage({
                     <td>
                       {formatPercent(
                         trade.ml_win_probability ??
-                          trade.win_probability ??
-                          trade.predicted_probability
+                        trade.win_probability ??
+                        trade.predicted_probability
                       )}
                     </td>
                     <td>
@@ -2854,10 +2940,10 @@ function DecisionBadge({
     decision === "ALLOW"
       ? "allow"
       : decision === "CAUTION"
-      ? "caution"
-      : decision === "DO NOT TRADE"
-      ? "danger"
-      : "warning";
+        ? "caution"
+        : decision === "DO NOT TRADE"
+          ? "danger"
+          : "warning";
 
   return (
     <span

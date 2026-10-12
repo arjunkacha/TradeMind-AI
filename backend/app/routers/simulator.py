@@ -9,7 +9,8 @@ import urllib.request
 import uuid
 from typing import Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from backend.app.routers.auth import current_user
 from pydantic import BaseModel, Field, model_validator
 
 router = APIRouter(prefix="/api/simulator", tags=["Demo Trading Simulator"])
@@ -60,19 +61,19 @@ def init_db():
         # Safe, additive migrations: keep existing demo account, trades, and journal rows.
         migrations = {
             "orders": {
-                "setup_type": "TEXT", "entry_reason": "TEXT", "emotion": "TEXT",
+                "user_id": "INTEGER", "setup_type": "TEXT", "entry_reason": "TEXT", "emotion": "TEXT",
                 "confidence": "INTEGER", "market_snapshot_json": "TEXT", "strategy_name": "TEXT"
             },
             "positions": {
-                "setup_type": "TEXT", "entry_reason": "TEXT", "emotion": "TEXT",
+                "user_id": "INTEGER", "setup_type": "TEXT", "entry_reason": "TEXT", "emotion": "TEXT",
                 "confidence": "INTEGER", "market_snapshot_json": "TEXT", "strategy_name": "TEXT"
             },
             "trades": {
-                "setup_type": "TEXT", "entry_reason": "TEXT", "emotion": "TEXT",
+                "user_id": "INTEGER", "setup_type": "TEXT", "entry_reason": "TEXT", "emotion": "TEXT",
                 "confidence": "INTEGER", "market_snapshot_json": "TEXT", "strategy_name": "TEXT"
             },
             "auto_journal": {
-                "setup_type": "TEXT", "entry_reason": "TEXT", "emotion": "TEXT",
+                "user_id": "INTEGER", "setup_type": "TEXT", "entry_reason": "TEXT", "emotion": "TEXT",
                 "confidence": "INTEGER", "market_snapshot_json": "TEXT", "strategy_name": "TEXT"
             },
         }
@@ -81,8 +82,33 @@ def init_db():
             for column, column_type in columns.items():
                 if column not in existing_columns:
                     c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS simulator_accounts (
+                user_id INTEGER PRIMARY KEY,
+                balance REAL NOT NULL DEFAULT 10000.0,
+                currency TEXT NOT NULL DEFAULT 'USD',
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+
         if c.execute("SELECT id FROM account WHERE id=1").fetchone() is None:
             c.execute("INSERT INTO account(id,balance,currency) VALUES(1,?,'USD')", (STARTING_BALANCE,))
+
+        # Preserve legacy data by assigning it to the first registered user only
+        # when it has not already been assigned. Never overwrite existing balances.
+        legacy_user = c.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+        if legacy_user is not None:
+            legacy_user_id = int(legacy_user["id"])
+            c.execute(
+                """INSERT OR IGNORE INTO simulator_accounts (user_id, balance, currency)
+                   SELECT ?, balance, currency FROM account WHERE id=1""",
+                (legacy_user_id,),
+            )
+            for table in ("orders", "positions", "trades", "auto_journal"):
+                c.execute(
+                    f"UPDATE {table} SET user_id=? WHERE user_id IS NULL",
+                    (legacy_user_id,),
+                )
 
 
 init_db()
@@ -256,10 +282,23 @@ def market_candles(
 
 
 @router.get("/account")
-def account():
+def account(user=Depends(current_user)):
+    user_id = int(user["id"])
     with db() as c:
-        a = dict(c.execute("SELECT * FROM account WHERE id=1").fetchone())
-        positions = c.execute("SELECT * FROM positions WHERE status='OPEN'").fetchall()
+        c.execute(
+            """INSERT OR IGNORE INTO simulator_accounts (user_id, balance, currency)
+               VALUES (?, ?, 'USD')""",
+            (user_id, STARTING_BALANCE),
+        )
+        a_row = c.execute(
+            "SELECT user_id AS id, balance, currency FROM simulator_accounts WHERE user_id=?",
+            (user_id,),
+        ).fetchone()
+        a = dict(a_row)
+        positions = c.execute(
+            "SELECT * FROM positions WHERE user_id=? AND status='OPEN'",
+            (user_id,),
+        ).fetchall()
         unrealized = 0.0
         quote_errors = []
         for p in positions:
@@ -269,12 +308,13 @@ def account():
                 unrealized += pnl(p["side"], p["entry_price"], mark, p["quantity"])
             except HTTPException as exc:
                 quote_errors.append({"symbol": p["symbol"], "detail": exc.detail})
-        realized_row = c.execute("SELECT COALESCE(SUM(realized_pnl), 0) AS realized_pnl FROM trades").fetchone()
+        realized_row = c.execute(
+            "SELECT COALESCE(SUM(realized_pnl), 0) AS realized_pnl FROM trades WHERE user_id=?",
+            (user_id,),
+        ).fetchone()
         realized = float(realized_row["realized_pnl"] or 0.0)
         a["realized_pnl"] = round(realized, 2)
         a["unrealized_pnl"] = round(unrealized, 2)
-        # Net P&L is the change from the simulator's starting balance plus any
-        # currently open-position P&L. Realized P&L is already included in balance.
         a["total_pnl"] = round((float(a["balance"]) - STARTING_BALANCE) + unrealized, 2)
         a["equity"] = round(a["balance"] + unrealized, 2)
         a["open_positions"] = len(positions)
@@ -283,7 +323,8 @@ def account():
 
 
 @router.post("/orders")
-def place_order(order: OrderIn):
+def place_order(order: OrderIn, user=Depends(current_user)):
+    user_id = int(user["id"])
     q = quote(order.symbol, require_fresh=(order.order_type == "MARKET"))
     if q.get("stale") or q.get("market_state") == "closed":
         raise HTTPException(503, "A fresh market quote is not available. No demo order was placed.")
@@ -309,17 +350,17 @@ def place_order(order: OrderIn):
     context_values = (order.setup_type, order.entry_reason, order.emotion, order.confidence, snapshot_json, order.strategy_name)
     with db() as c:
         c.execute("""INSERT INTO orders
-            (order_id,symbol,side,order_type,quantity,requested_price,stop_loss,take_profit,status,created_at,position_id,
+            (order_id,user_id,symbol,side,order_type,quantity,requested_price,stop_loss,take_profit,status,created_at,position_id,
              setup_type,entry_reason,emotion,confidence,market_snapshot_json,strategy_name)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (oid, order.symbol, order.side, order.order_type, order.quantity, order.price,
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (oid, user_id, order.symbol, order.side, order.order_type, order.quantity, order.price,
              order.stop_loss, order.take_profit, status, created_at, posid, *context_values))
         if posid:
             c.execute("""INSERT INTO positions
-                (position_id,order_id,symbol,side,quantity,entry_price,stop_loss,take_profit,opened_at,status,
+                (position_id,user_id,order_id,symbol,side,quantity,entry_price,stop_loss,take_profit,opened_at,status,
                  setup_type,entry_reason,emotion,confidence,market_snapshot_json,strategy_name)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (posid, oid, order.symbol, order.side, order.quantity, entry, order.stop_loss,
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (posid, user_id, oid, order.symbol, order.side, order.quantity, entry, order.stop_loss,
                  order.take_profit, created_at, "OPEN", *context_values))
     return {"order_id": oid, "position_id": posid, "symbol": order.symbol, "side": order.side,
             "order_type": order.order_type, "quantity": order.quantity, "status": status,
@@ -329,9 +370,10 @@ def place_order(order: OrderIn):
 
 
 @router.get("/orders")
-def orders(limit: int = Query(100, ge=1, le=500)):
+def orders(limit: int = Query(100, ge=1, le=500), user=Depends(current_user)):
+    user_id = int(user["id"])
     with db() as c:
-        rows = c.execute("SELECT * FROM orders ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        rows = c.execute("SELECT * FROM orders WHERE user_id=? ORDER BY created_at DESC LIMIT ?", (user_id, limit)).fetchall()
     return {"count": len(rows), "orders": [dict(r) for r in rows]}
 
 
@@ -422,13 +464,13 @@ def create_auto_journal(c, trade, stop_loss=None, take_profit=None):
         + (f" Entry confidence: {confidence}/10." if confidence is not None else "")
     )
     c.execute("""INSERT OR IGNORE INTO auto_journal
-        (journal_id, trade_id, source, symbol, side, quantity, entry_price, exit_price,
+        (journal_id, user_id, trade_id, source, symbol, side, quantity, entry_price, exit_price,
          realized_pnl, opened_at, closed_at, close_reason, stop_loss, take_profit,
          holding_minutes, r_multiple, outcome, risk_score, risk_level, decision,
          behaviors_json, ai_summary, lessons_json, created_at,
          setup_type, entry_reason, emotion, confidence, market_snapshot_json, strategy_name)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        ("SIM-JRN-" + uuid.uuid4().hex[:12].upper(), trade_id, "simulator_auto",
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        ("SIM-JRN-" + uuid.uuid4().hex[:12].upper(), trade.get("user_id"), trade_id, "simulator_auto",
          trade["symbol"], side, quantity, entry, exit_price, realized, opened_at,
          closed_at, close_reason, stop_loss, take_profit, holding_minutes, r_multiple,
          outcome, risk_score, risk_level, decision, json.dumps(behaviors),
@@ -439,12 +481,12 @@ def create_auto_journal(c, trade, stop_loss=None, take_profit=None):
 def backfill_auto_journal():
     """Backfill journal entries for simulator trades closed before this update."""
     with db() as c:
-        rows = c.execute("SELECT * FROM trades ORDER BY closed_at ASC").fetchall()
+        rows = c.execute("SELECT * FROM trades WHERE user_id IS NOT NULL ORDER BY closed_at ASC").fetchall()
         for row in rows:
             trade = dict(row)
             pos = c.execute(
-                "SELECT stop_loss, take_profit FROM positions WHERE position_id=?",
-                (trade.get("position_id"),),
+                "SELECT stop_loss, take_profit FROM positions WHERE position_id=? AND user_id=?",
+                (trade.get("position_id"), trade.get("user_id")),
             ).fetchone()
             protection = dict(pos) if pos else {}
             trade.update({k: protection.get(k) for k in ("setup_type", "entry_reason", "emotion", "confidence", "market_snapshot_json", "strategy_name")})
@@ -476,10 +518,10 @@ def journal_record(row):
     return item
 
 
-def execute_triggered_exits():
+def execute_triggered_exits(user_id: int):
     """Check attached SL/TP against fresh provider quotes; demo-only execution."""
     with db() as c:
-        rows = c.execute("SELECT * FROM positions WHERE status='OPEN'").fetchall()
+        rows = c.execute("SELECT * FROM positions WHERE user_id=? AND status='OPEN'", (user_id,)).fetchall()
         for row in rows:
             p = dict(row)
             if p["stop_loss"] is None and p["take_profit"] is None:
@@ -510,26 +552,27 @@ def execute_triggered_exits():
             context_keys = ("setup_type", "entry_reason", "emotion", "confidence", "market_snapshot_json", "strategy_name")
             context = {key: p.get(key) for key in context_keys}
             c.execute("""INSERT INTO trades
-                (trade_id,position_id,symbol,side,quantity,entry_price,exit_price,realized_pnl,opened_at,closed_at,close_reason,
+                (trade_id,user_id,position_id,symbol,side,quantity,entry_price,exit_price,realized_pnl,opened_at,closed_at,close_reason,
                  setup_type,entry_reason,emotion,confidence,market_snapshot_json,strategy_name)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (tid, p["position_id"], p["symbol"], p["side"], p["quantity"], p["entry_price"], mark,
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (tid, user_id, p["position_id"], p["symbol"], p["side"], p["quantity"], p["entry_price"], mark,
                  realized, p["opened_at"], closed_at, reason, *[context[k] for k in context_keys]))
             create_auto_journal(c, {
-                "trade_id": tid, "position_id": p["position_id"], "symbol": p["symbol"],
+                "trade_id": tid, "user_id": user_id, "position_id": p["position_id"], "symbol": p["symbol"],
                 "side": p["side"], "quantity": p["quantity"], "entry_price": p["entry_price"],
                 "exit_price": mark, "realized_pnl": realized, "opened_at": p["opened_at"],
                 "closed_at": closed_at, "close_reason": reason, **context,
             }, p["stop_loss"], p["take_profit"])
-            c.execute("UPDATE account SET balance=balance+? WHERE id=1", (realized,))
-            c.execute("UPDATE positions SET quantity=0,status='CLOSED' WHERE position_id=?", (p["position_id"],))
+            c.execute("UPDATE simulator_accounts SET balance=balance+? WHERE user_id=?", (realized, user_id))
+            c.execute("UPDATE positions SET quantity=0,status='CLOSED' WHERE position_id=? AND user_id=?", (p["position_id"], user_id))
 
 
 @router.get("/positions")
-def positions():
-    execute_triggered_exits()
+def positions(user=Depends(current_user)):
+    user_id = int(user["id"])
+    execute_triggered_exits(user_id)
     with db() as c:
-        rows = c.execute("SELECT * FROM positions WHERE status='OPEN' ORDER BY opened_at DESC").fetchall()
+        rows = c.execute("SELECT * FROM positions WHERE user_id=? AND status='OPEN' ORDER BY opened_at DESC", (user_id,)).fetchall()
     result = []
     for row in rows:
         p = dict(row)
@@ -551,9 +594,10 @@ def positions():
 
 
 @router.put("/positions/{position_id}/protection")
-def update_protection(position_id: str, request: ProtectionIn):
+def update_protection(position_id: str, request: ProtectionIn, user=Depends(current_user)):
+    user_id = int(user["id"])
     with db() as c:
-        row = c.execute("SELECT * FROM positions WHERE position_id=? AND status='OPEN'", (position_id,)).fetchone()
+        row = c.execute("SELECT * FROM positions WHERE position_id=? AND user_id=? AND status='OPEN'", (position_id, user_id)).fetchone()
         if row is None:
             raise HTTPException(404, "Open position not found.")
         p = dict(row)
@@ -568,15 +612,16 @@ def update_protection(position_id: str, request: ProtectionIn):
                 raise HTTPException(422, "For a BUY position, take-profit must be above entry price.")
             if p["side"] == "SELL" and tp >= p["entry_price"]:
                 raise HTTPException(422, "For a SELL position, take-profit must be below entry price.")
-        c.execute("UPDATE positions SET stop_loss=?, take_profit=? WHERE position_id=?", (sl, tp, position_id))
-        c.execute("UPDATE orders SET stop_loss=?, take_profit=? WHERE order_id=?", (sl, tp, p["order_id"]))
+        c.execute("UPDATE positions SET stop_loss=?, take_profit=? WHERE position_id=? AND user_id=?", (sl, tp, position_id, user_id))
+        c.execute("UPDATE orders SET stop_loss=?, take_profit=? WHERE order_id=? AND user_id=?", (sl, tp, p["order_id"], user_id))
     return {"position_id": position_id, "stop_loss": sl, "take_profit": tp, "status": "UPDATED", "execution_mode": "DEMO_ONLY"}
 
 
 @router.post("/positions/{position_id}/close")
-def close_position(position_id: str, request: CloseIn):
+def close_position(position_id: str, request: CloseIn, user=Depends(current_user)):
+    user_id = int(user["id"])
     with db() as c:
-        row = c.execute("SELECT * FROM positions WHERE position_id=? AND status='OPEN'", (position_id,)).fetchone()
+        row = c.execute("SELECT * FROM positions WHERE position_id=? AND user_id=? AND status='OPEN'", (position_id, user_id)).fetchone()
         if row is None:
             raise HTTPException(404, "Open position not found.")
         p = dict(row)
@@ -594,22 +639,22 @@ def close_position(position_id: str, request: CloseIn):
         context_keys = ("setup_type", "entry_reason", "emotion", "confidence", "market_snapshot_json", "strategy_name")
         context = {key: p.get(key) for key in context_keys}
         c.execute("""INSERT INTO trades
-            (trade_id,position_id,symbol,side,quantity,entry_price,exit_price,realized_pnl,opened_at,closed_at,close_reason,
+            (trade_id,user_id,position_id,symbol,side,quantity,entry_price,exit_price,realized_pnl,opened_at,closed_at,close_reason,
              setup_type,entry_reason,emotion,confidence,market_snapshot_json,strategy_name)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (tid, position_id, p["symbol"], p["side"], qty, p["entry_price"], exit_price,
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (tid, user_id, position_id, p["symbol"], p["side"], qty, p["entry_price"], exit_price,
              realized, p["opened_at"], closed_at, "MANUAL", *[context[k] for k in context_keys]))
         create_auto_journal(c, {
-            "trade_id": tid, "position_id": position_id, "symbol": p["symbol"],
+            "trade_id": tid, "user_id": user_id, "position_id": position_id, "symbol": p["symbol"],
             "side": p["side"], "quantity": qty, "entry_price": p["entry_price"],
             "exit_price": exit_price, "realized_pnl": realized, "opened_at": p["opened_at"],
             "closed_at": closed_at, "close_reason": "MANUAL", **context,
         }, p["stop_loss"], p["take_profit"])
-        c.execute("UPDATE account SET balance=balance+? WHERE id=1", (realized,))
+        c.execute("UPDATE simulator_accounts SET balance=balance+? WHERE user_id=?", (realized, user_id))
         if remaining <= 1e-8:
-            c.execute("UPDATE positions SET quantity=0,status='CLOSED' WHERE position_id=?", (position_id,))
+            c.execute("UPDATE positions SET quantity=0,status='CLOSED' WHERE position_id=? AND user_id=?", (position_id, user_id))
         else:
-            c.execute("UPDATE positions SET quantity=? WHERE position_id=?", (remaining, position_id))
+            c.execute("UPDATE positions SET quantity=? WHERE position_id=? AND user_id=?", (remaining, position_id, user_id))
     return {"trade_id": tid, "position_id": position_id, "symbol": p["symbol"], "side": p["side"],
             "closed_quantity": qty, "remaining_quantity": max(remaining, 0), "entry_price": p["entry_price"],
             "exit_price": exit_price, "realized_pnl": realized, "closed_at": closed_at,
@@ -617,19 +662,21 @@ def close_position(position_id: str, request: CloseIn):
 
 
 @router.get("/journal")
-def auto_journal(limit: int = Query(200, ge=1, le=1000)):
+def auto_journal(limit: int = Query(200, ge=1, le=1000), user=Depends(current_user)):
+    user_id = int(user["id"])
     """Automatically generated journal entries for closed simulator trades."""
     with db() as c:
-        rows = c.execute("SELECT * FROM auto_journal ORDER BY closed_at DESC LIMIT ?", (limit,)).fetchall()
+        rows = c.execute("SELECT * FROM auto_journal WHERE user_id=? ORDER BY closed_at DESC LIMIT ?", (user_id, limit)).fetchall()
     entries = [journal_record(row) for row in rows]
     return {"count": len(entries), "journal": entries, "source": "simulator_auto"}
 
 
 @router.get("/journal/insights")
-def journal_insights(limit: int = Query(100, ge=1, le=500)):
+def journal_insights(limit: int = Query(100, ge=1, le=500), user=Depends(current_user)):
+    user_id = int(user["id"])
     """Account-level descriptive insights based only on recorded simulator exits."""
     with db() as c:
-        rows = c.execute("SELECT * FROM auto_journal ORDER BY closed_at DESC LIMIT ?", (limit,)).fetchall()
+        rows = c.execute("SELECT * FROM auto_journal WHERE user_id=? ORDER BY closed_at DESC LIMIT ?", (user_id, limit)).fetchall()
     entries = [journal_record(row) for row in rows]
     if not entries:
         return {"count": 0, "summary": {"trades": 0, "win_rate": 0, "net_pnl": 0}, "insights": ["Close a demo trade to start building personalized insights."], "source": "simulator_auto"}
@@ -681,18 +728,20 @@ def journal_insights(limit: int = Query(100, ge=1, le=500)):
 
 
 @router.get("/journal/{trade_id}")
-def auto_journal_detail(trade_id: str):
+def auto_journal_detail(trade_id: str, user=Depends(current_user)):
+    user_id = int(user["id"])
     with db() as c:
-        row = c.execute("SELECT * FROM auto_journal WHERE trade_id=? OR journal_id=?", (trade_id, trade_id)).fetchone()
+        row = c.execute("SELECT * FROM auto_journal WHERE user_id=? AND (trade_id=? OR journal_id=?)", (user_id, trade_id, trade_id)).fetchone()
     if row is None:
         raise HTTPException(404, "Auto-journal entry not found.")
     return {"journal": journal_record(row)}
 
 
 @router.get("/trades")
-def trades(limit: int = Query(200, ge=1, le=1000)):
+def trades(limit: int = Query(200, ge=1, le=1000), user=Depends(current_user)):
+    user_id = int(user["id"])
     with db() as c:
-        rows = c.execute("SELECT * FROM trades ORDER BY closed_at DESC LIMIT ?", (limit,)).fetchall()
+        rows = c.execute("SELECT * FROM trades WHERE user_id=? ORDER BY closed_at DESC LIMIT ?", (user_id, limit)).fetchall()
     return {"count": len(rows), "trades": [dict(r) for r in rows]}
 
 

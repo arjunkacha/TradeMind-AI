@@ -2,17 +2,19 @@ from fastapi import (
     FastAPI,
     HTTPException,
     Query,
+    Depends,
     UploadFile,
     File,
 )
-from app.integrations.tradingview.parser import (
+from backend.app.integrations.tradingview.parser import (
     parse_tradingview_csv,
     save_trades,
 )
 
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers.simulator import router as simulator_router
+from backend.app.routers.simulator import router as simulator_router
+from backend.app.routers.auth import router as auth_router, current_user
 
 import pandas as pd
 import numpy as np
@@ -98,6 +100,7 @@ app = FastAPI(
 
 # Register the demo trading simulator routes.
 app.include_router(simulator_router)
+app.include_router(auth_router)
 
 
 # ============================================================
@@ -106,8 +109,12 @@ app.include_router(simulator_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=[
+        "https://trademind-ai-dashboard.netlify.app",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -332,7 +339,7 @@ def health():
 # DASHBOARD OVERVIEW
 # ============================================================
 
-@app.get("/api/dashboard")
+@app.get("/api/dashboard", dependencies=[Depends(current_user)])
 def dashboard():
 
     if decisions_df is None:
@@ -378,6 +385,8 @@ def dashboard():
 
     return clean_dict({
 
+        "data_scope": "shared_historical_sample",
+        "label": "Historical Examples (shared sample data)",
         "total_trades":
             total_trades,
 
@@ -412,7 +421,7 @@ def dashboard():
 # TRADES
 # ============================================================
 
-@app.get("/api/trades")
+@app.get("/api/trades", dependencies=[Depends(current_user)])
 def get_trades(
 
     limit: int = Query(
@@ -467,6 +476,8 @@ def get_trades(
     )
 
     return {
+        "data_scope": "shared_historical_sample",
+        "label": "Historical Examples (shared sample data)",
         "count":
             len(df),
 
@@ -479,7 +490,7 @@ def get_trades(
 # SINGLE TRADE
 # ============================================================
 
-@app.get("/api/trades/{trade_id}")
+@app.get("/api/trades/{trade_id}", dependencies=[Depends(current_user)])
 def get_trade(trade_id: str):
 
     if decisions_df is None:
@@ -518,7 +529,7 @@ def get_trade(trade_id: str):
 # TRADERS
 # ============================================================
 
-@app.get("/api/traders")
+@app.get("/api/traders", dependencies=[Depends(current_user)])
 def get_traders():
 
     if profiles_df is None:
@@ -541,7 +552,7 @@ def get_traders():
 # SINGLE TRADER
 # ============================================================
 
-@app.get("/api/traders/{account}")
+@app.get("/api/traders/{account}", dependencies=[Depends(current_user)])
 def get_trader(
     account: str
 ):
@@ -653,7 +664,7 @@ def get_trader(
 # BEHAVIOR SUMMARY
 # ============================================================
 
-@app.get("/api/behaviors")
+@app.get("/api/behaviors", dependencies=[Depends(current_user)])
 def get_behaviors():
 
     if behaviors_df is None:
@@ -766,7 +777,7 @@ def get_behaviors():
 # BEHAVIOR EVENTS
 # ============================================================
 
-@app.get("/api/behaviors/events")
+@app.get("/api/behaviors/events", dependencies=[Depends(current_user)])
 def get_behavior_events(
 
     limit: int = Query(
@@ -852,7 +863,7 @@ def get_behavior_events(
 # SINGLE TRADE BEHAVIOR
 # ============================================================
 
-@app.get("/api/behaviors/{trade_id}")
+@app.get("/api/behaviors/{trade_id}", dependencies=[Depends(current_user)])
 def get_trade_behaviors(
     trade_id: str
 ):
@@ -942,7 +953,7 @@ def get_trade_behaviors(
 # RISK SUMMARY
 # ============================================================
 
-@app.get("/api/risk-summary")
+@app.get("/api/risk-summary", dependencies=[Depends(current_user)])
 def get_risk_summary():
 
     if decisions_df is None:
@@ -980,7 +991,7 @@ def get_risk_summary():
 # ML METRICS
 # ============================================================
 
-@app.get("/api/ml-metrics")
+@app.get("/api/ml-metrics", dependencies=[Depends(current_user)])
 def get_ml_metrics():
 
     if ml_metrics is None:
@@ -1007,7 +1018,7 @@ def get_ml_metrics():
 # RECENT HIGH-RISK TRADES
 # ============================================================
 
-@app.get("/api/high-risk-trades")
+@app.get("/api/high-risk-trades", dependencies=[Depends(current_user)])
 def get_high_risk_trades(
 
     limit: int = Query(
@@ -1064,6 +1075,25 @@ def get_high_risk_trades(
 # TRADINGVIEW PAPER TRADING
 # ============================================================
 
+
+
+def tradingview_user_storage_not_ready():
+    """Fail closed: TradingView CSV analysis is not yet isolated per user.
+
+    The current pipeline writes shared CSV files. Enabling these endpoints
+    would let one account overwrite or read another account's imported trades.
+    Keep them unavailable until storage and pipeline paths are user-scoped.
+    """
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "TradingView import and analytics are temporarily unavailable while "
+            "per-user storage is being implemented. Your existing historical "
+            "sample analytics remain available in the Historical Examples section."
+        ),
+    )
+
+
 TRADINGVIEW_TRADES_FILE = DATA_DIR / "tradingview_trades.csv"
 TRADINGVIEW_ANALYSIS_DIR = DATA_DIR / "tradingview_analysis"
 
@@ -1115,7 +1145,7 @@ def tradingview_profiles():
     return load_tradingview_analysis()["profiles"]
 
 
-@app.post("/api/tradingview/import")
+@app.post("/api/tradingview/import", dependencies=[Depends(current_user), Depends(tradingview_user_storage_not_ready)])
 async def import_tradingview_csv(
     file: UploadFile = File(...),
     account: str = Query("TradingView-Paper"),
@@ -1160,7 +1190,7 @@ async def import_tradingview_csv(
     output_path = save_trades(trades_df)
 
     try:
-        from app.services.tradingview_pipeline import run_tradingview_analysis
+        from backend.app.services.tradingview_pipeline import run_tradingview_analysis
         analysis = run_tradingview_analysis()
     except Exception as exc:
         raise HTTPException(
@@ -1190,7 +1220,7 @@ async def import_tradingview_csv(
     })
 
 
-@app.get("/api/tradingview/status")
+@app.get("/api/tradingview/status", dependencies=[Depends(current_user), Depends(tradingview_user_storage_not_ready)])
 def tradingview_status():
     """Return whether TradingView data has been imported and analyzed."""
 
@@ -1220,7 +1250,7 @@ def tradingview_status():
     }
 
 
-@app.get("/api/tradingview/dashboard")
+@app.get("/api/tradingview/dashboard", dependencies=[Depends(current_user), Depends(tradingview_user_storage_not_ready)])
 def tradingview_dashboard():
     """Dashboard overview for TradingView Paper Trading."""
 
@@ -1269,7 +1299,7 @@ def tradingview_dashboard():
     })
 
 
-@app.get("/api/tradingview/trades")
+@app.get("/api/tradingview/trades", dependencies=[Depends(current_user), Depends(tradingview_user_storage_not_ready)])
 def tradingview_trades(
     limit: int = Query(200, ge=1, le=500),
     decision: str | None = None,
@@ -1298,7 +1328,7 @@ def tradingview_trades(
     }
 
 
-@app.get("/api/tradingview/trades/{trade_id}")
+@app.get("/api/tradingview/trades/{trade_id}", dependencies=[Depends(current_user), Depends(tradingview_user_storage_not_ready)])
 def tradingview_trade(trade_id: str):
     """
     Return one complete TradingView trade.
@@ -1528,7 +1558,7 @@ def tradingview_trade(trade_id: str):
 # TRADINGVIEW ML PREDICTIONS
 # ============================================================
 
-@app.get("/api/tradingview/ml-predictions")
+@app.get("/api/tradingview/ml-predictions", dependencies=[Depends(current_user), Depends(tradingview_user_storage_not_ready)])
 def tradingview_ml_predictions(
     limit: int = Query(100, ge=1, le=500),
 ):
@@ -1589,7 +1619,7 @@ def tradingview_ml_predictions(
     })
 
 
-@app.get("/api/tradingview/behaviors")
+@app.get("/api/tradingview/behaviors", dependencies=[Depends(current_user), Depends(tradingview_user_storage_not_ready)])
 def tradingview_behavior_summary():
     """Behavioral AI summary for TradingView trades."""
 
@@ -1640,7 +1670,7 @@ def tradingview_behavior_summary():
     })
 
 
-@app.get("/api/tradingview/behaviors/events")
+@app.get("/api/tradingview/behaviors/events", dependencies=[Depends(current_user), Depends(tradingview_user_storage_not_ready)])
 def tradingview_behavior_events(
     limit: int = Query(100, ge=1, le=1000),
     behavior: str | None = None,
@@ -1673,7 +1703,7 @@ def tradingview_behavior_events(
     })
 
 
-@app.get("/api/tradingview/behaviors/{trade_id}")
+@app.get("/api/tradingview/behaviors/{trade_id}", dependencies=[Depends(current_user), Depends(tradingview_user_storage_not_ready)])
 def tradingview_trade_behaviors(trade_id: str):
     """Behavior analysis for one TradingView trade."""
 
@@ -1705,7 +1735,7 @@ def tradingview_trade_behaviors(trade_id: str):
     })
 
 
-@app.get("/api/tradingview/risk-summary")
+@app.get("/api/tradingview/risk-summary", dependencies=[Depends(current_user), Depends(tradingview_user_storage_not_ready)])
 def tradingview_risk_summary():
     """Risk Intelligence summary for TradingView trades."""
 
@@ -1727,7 +1757,7 @@ def tradingview_risk_summary():
     })
 
 
-@app.get("/api/tradingview/high-risk-trades")
+@app.get("/api/tradingview/high-risk-trades", dependencies=[Depends(current_user), Depends(tradingview_user_storage_not_ready)])
 def tradingview_high_risk_trades(
     limit: int = Query(10, ge=1, le=100),
 ):
@@ -1759,7 +1789,7 @@ def tradingview_high_risk_trades(
     })
 
 
-@app.get("/api/tradingview/traders")
+@app.get("/api/tradingview/traders", dependencies=[Depends(current_user), Depends(tradingview_user_storage_not_ready)])
 def tradingview_traders():
     """TradingView trader profiles."""
 
@@ -1772,7 +1802,7 @@ def tradingview_traders():
     }
 
 
-@app.get("/api/tradingview/traders/{account}")
+@app.get("/api/tradingview/traders/{account}", dependencies=[Depends(current_user), Depends(tradingview_user_storage_not_ready)])
 def tradingview_trader(account: str):
     """Complete TradingView trader profile and distributions."""
 

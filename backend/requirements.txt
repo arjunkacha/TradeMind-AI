@@ -5,3 +5,5 @@ numpy
 scikit-learn
 joblib
 python-multipart
+pwdlib[argon2]
+PyJWT

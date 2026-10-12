@@ -1689,3 +1689,173 @@ nav button::-moz-focus-inner {
     inset 3px 0 0 #a78bfa,
     0 0 22px rgba(124, 79, 255, 0.10) !important;
 }
+
+
+/* =========================================================
+   TRADEMIND AI PROFILE + THEME CONTROLS
+   ========================================================= */
+.theme-toggle,
+.profile-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--ui-border, #263247);
+  border-radius: 9px;
+  background: var(--ui-card, #0c1320);
+  color: var(--ui-text, #e8edf6);
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.theme-toggle {
+  width: 36px;
+  flex: 0 0 36px;
+}
+
+.theme-toggle:hover,
+.profile-trigger:hover {
+  border-color: #8b5cf6;
+}
+
+.profile-menu {
+  position: relative;
+  z-index: 1000;
+}
+
+.profile-trigger-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 150px;
+}
+
+.profile-trigger-text strong {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.profile-trigger-text small {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  color: var(--ui-muted, #8995aa);
+}
+
+.profile-avatar {
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  flex: 0 0 29px;
+  border-radius: 8px;
+  color: #a78bfa;
+  background: rgba(139, 92, 246, 0.14);
+}
+
+.profile-dropdown {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  width: 260px;
+  padding: 14px;
+  border: 1px solid var(--ui-border, #263247);
+  border-radius: 12px;
+  background: var(--ui-card, #0c1320);
+  color: var(--ui-text, #e8edf6);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.24);
+  z-index: 1002;
+}
+
+.profile-details {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.profile-details strong {
+  font-size: 12px;
+}
+
+.profile-details span {
+  overflow-wrap: anywhere;
+  color: var(--ui-muted, #8995aa);
+  font-size: 11px;
+}
+
+.profile-divider {
+  height: 1px;
+  margin: 13px 0;
+  background: var(--ui-border, #263247);
+}
+
+.profile-logout {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #ef6464;
+  cursor: pointer;
+  text-align: left;
+}
+
+.profile-logout:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.profile-dismiss {
+  position: fixed;
+  inset: 0;
+  z-index: 1001;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+@media (max-width: 1100px) {
+  .profile-trigger-text {
+    display: none;
+  }
+
+  .profile-trigger {
+    gap: 5px;
+    padding: 4px;
+  }
+
+  .topbar {
+    padding-left: 16px !important;
+    padding-right: 12px !important;
+  }
+
+  .topbar-actions {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 700px) {
+  .source-selector {
+    max-width: 145px;
+  }
+
+  .source-selector select {
+    max-width: 100px;
+  }
+
+  .topbar-actions .primary-button {
+    padding: 8px !important;
+    font-size: 0 !important;
+  }
+
+  .topbar-actions .primary-button svg {
+    margin: 0;
+  }
+}

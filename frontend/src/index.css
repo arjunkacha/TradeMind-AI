@@ -1397,3 +1397,170 @@ button.nav-item {
     flex-direction: column;
   }
 }
+
+
+/* =========================================================
+   TRADEMIND AI THEME TOKENS
+   ========================================================= */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ui-page: #070b12;
+  --ui-sidebar: #090e18;
+  --ui-card: #0c1320;
+  --ui-card-soft: #0e1723;
+  --ui-topbar: rgba(7, 11, 18, 0.94);
+  --ui-text: #e8edf6;
+  --ui-muted: #8995aa;
+  --ui-border: #202b3d;
+  --ui-hover: #121d2e;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --ui-page: #f3f6fb;
+  --ui-sidebar: #ffffff;
+  --ui-card: #ffffff;
+  --ui-card-soft: #f7f9fd;
+  --ui-topbar: rgba(255, 255, 255, 0.94);
+  --ui-text: #172033;
+  --ui-muted: #64748b;
+  --ui-border: #dbe3ef;
+  --ui-hover: #eef2f8;
+}
+
+:root[data-theme="light"] body,
+:root[data-theme="light"] .app-shell,
+:root[data-theme="light"] .main-content {
+  background: var(--ui-page) !important;
+  color: var(--ui-text) !important;
+}
+
+:root[data-theme="light"] .sidebar {
+  background: var(--ui-sidebar) !important;
+  background-image: none !important;
+  border-color: var(--ui-border) !important;
+  color: var(--ui-text) !important;
+}
+
+:root[data-theme="light"] .brand-name,
+:root[data-theme="light"] .page-title,
+:root[data-theme="light"] .hero h1,
+:root[data-theme="light"] .hero-status strong,
+:root[data-theme="light"] .kpi-value,
+:root[data-theme="light"] .panel h2,
+:root[data-theme="light"] .chart-center strong,
+:root[data-theme="light"] .profile-trigger,
+:root[data-theme="light"] .profile-dropdown,
+:root[data-theme="light"] .detail-placeholder h2,
+:root[data-theme="light"] .detail-heading h2,
+:root[data-theme="light"] .metric strong,
+:root[data-theme="light"] .decision-value,
+:root[data-theme="light"] .section-title,
+:root[data-theme="light"] .recommendation strong,
+:root[data-theme="light"] .trade-analysis-page {
+  color: var(--ui-text) !important;
+}
+
+:root[data-theme="light"] .topbar {
+  background: var(--ui-topbar) !important;
+  border-color: var(--ui-border) !important;
+}
+
+:root[data-theme="light"] .hero,
+:root[data-theme="light"] .kpi-card,
+:root[data-theme="light"] .panel,
+:root[data-theme="light"] .metric,
+:root[data-theme="light"] .behavior-item,
+:root[data-theme="light"] .recommendation,
+:root[data-theme="light"] .model-name,
+:root[data-theme="light"] .legend-item,
+:root[data-theme="light"] .hero-status,
+:root[data-theme="light"] .system-status,
+:root[data-theme="light"] .profile-dropdown,
+:root[data-theme="light"] .profile-trigger,
+:root[data-theme="light"] .theme-toggle,
+:root[data-theme="light"] .refresh-button,
+:root[data-theme="light"] .menu-button,
+:root[data-theme="light"] .source-selector,
+:root[data-theme="light"] .search-box,
+:root[data-theme="light"] .detail-metrics .metric {
+  background: var(--ui-card) !important;
+  background-image: none;
+  border-color: var(--ui-border) !important;
+}
+
+:root[data-theme="light"] .hero p,
+:root[data-theme="light"] .hero-status span,
+:root[data-theme="light"] .kpi-label,
+:root[data-theme="light"] .kpi-description,
+:root[data-theme="light"] .panel-header p,
+:root[data-theme="light"] .page-subtitle,
+:root[data-theme="light"] .nav-section,
+:root[data-theme="light"] .system-status small,
+:root[data-theme="light"] .version,
+:root[data-theme="light"] .profile-trigger-text small,
+:root[data-theme="light"] .profile-details span,
+:root[data-theme="light"] .muted,
+:root[data-theme="light"] .trade-count {
+  color: var(--ui-muted) !important;
+}
+
+:root[data-theme="light"] .nav-item,
+:root[data-theme="light"] button.nav-item {
+  color: #526078 !important;
+}
+
+:root[data-theme="light"] .nav-item:hover,
+:root[data-theme="light"] button.nav-item:hover {
+  color: #312e81 !important;
+  background: var(--ui-hover) !important;
+}
+
+:root[data-theme="light"] .nav-item.active,
+:root[data-theme="light"] button.nav-item.active {
+  color: #6d28d9 !important;
+  background: #f0eaff !important;
+}
+
+:root[data-theme="light"] .sidebar .nav-item svg {
+  color: inherit !important;
+}
+
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea {
+  color: var(--ui-text) !important;
+  background: var(--ui-card) !important;
+  border-color: var(--ui-border) !important;
+}
+
+:root[data-theme="light"] table,
+:root[data-theme="light"] thead,
+:root[data-theme="light"] thead tr,
+:root[data-theme="light"] th,
+:root[data-theme="light"] td,
+:root[data-theme="light"] tbody tr:hover {
+  background-color: var(--ui-card) !important;
+  border-color: var(--ui-border) !important;
+}
+
+:root[data-theme="light"] th {
+  color: #64748b !important;
+}
+
+:root[data-theme="light"] td,
+:root[data-theme="light"] td strong {
+  color: #334155 !important;
+}
+
+:root[data-theme="light"] .search-box input {
+  background: transparent !important;
+  color: var(--ui-text) !important;
+}
+
+
+.route-loading {
+  min-height: 100vh;
+  background: var(--ui-page, #080b12);
+}
